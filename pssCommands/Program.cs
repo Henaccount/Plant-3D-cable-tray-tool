@@ -1,498 +1,224 @@
-﻿using Autodesk.AutoCAD.ApplicationServices;
+﻿#region Namespaces
+
+using System;
+
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
-using Autodesk.AutoCAD.Geometry;
-using Autodesk.ProcessPower.DataLinks;
-using Autodesk.ProcessPower.DataObjects;
-using Autodesk.ProcessPower.P3dProjectParts;
-using Autodesk.ProcessPower.PartsRepository;
-//using Autodesk.ProcessPower.PartsRepository.Specification;
-using Autodesk.ProcessPower.PlantInstance;
-using Autodesk.ProcessPower.PnP3dObjects;
-using Autodesk.ProcessPower.ProjectManager;
-using System;
-using System.Collections.Generic;
+
 using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
-using PlantApp = Autodesk.ProcessPower.PlantInstance.PlantApplication;
-using Autodesk.ProcessPower.PnP3dDataLinks;
+using System.Collections.Generic;
+using Autodesk.ProcessPower.ProjectManager;
+using Autodesk.ProcessPower.PlantInstance;
 using Autodesk.AutoCAD.Runtime;
-using Autodesk.ProcessPower.P3dUI;
+using Autodesk.ProcessPower.DataLinks;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.ProcessPower.PnP3dObjects;
 
+#endregion
 
-// AUTODESK PROVIDES THIS PROGRAM "AS IS" AND WITH ALL FAULTS. 
-// AUTODESK SPECIFICALLY DISCLAIMS ANY IMPLIED WARRANTY OF 
-// MERCHANTABILITY OR FITNESS FOR A PARTICULAR USE.  AUTODESK, INC. 
-// DOES NOT WARRANT THAT THE OPERATION OF THE PROGRAM WILL BE 
-// UNINTERRUPTED OR ERROR FREE. 
-//V1
-//added autotray
-//V2
-//include shortdescription as selection criteria
-//extract dimenensions string, replace just length (must be the L parameter!), W must be set up in the spec as nominal diameter (size)
-//can do imperial with imperial spec and metric with metric spec
-//handle just parts from the specified spec
-//use size and spec from the existing pipes not from the ribbon, exception: "setSpecForOneTray" uses the size from the ribbon
-//replace the spec string in the properties for the couplings with the empty string, so they cannot be changed by the spec update
-//v3
-//can now flip elbows of any angle
-//use top view for the autotray command, it will connect (general: view from the "up direction" that you will choose, then it will connect)!
-//length of coupling will be displayed in the length field, it will show the length at the time when the autotray command is executed
-//H of coupling will be written to the DesignStd field, it can then be used by a PLANTDEFINECALCPROPERTIES for correct BOP calculation: BOP+MatchingPipeOd/2-ToNumber(DesignStd)/2
-//v4
-//removed the H property writing, because it is easier to correct the BOP by editing the Outerdiamter OD of the cable trays
-//now assigning the linenumbertag from the pipe to the coupling (tray)
-//disabled setSpecForOneTray command
-//added 2 pick for direction definition
-//added respect to the current user coordinate system 
-//v5 test with sleeve
-//v6 going back to coupling, not sent out yet
+//V0
+[assembly: CommandClass(typeof(pssCommands.Program))]
 
-//todo: still the ribbon setting must fit the pipes ND, because setSpecForOneTray is part of the autotray command, this can be fixed
-[assembly: Autodesk.AutoCAD.Runtime.ExtensionApplication(null)]
-[assembly: Autodesk.AutoCAD.Runtime.CommandClass(typeof(pssCommands.Program))]
 
 namespace pssCommands
 {
-    class Program
+    public class Program
     {
 
-        public static SpecPart FetchSpecPart(
-                  String PartName,
-                  string shortdesc,
-                  string SpecName,
-                  NominalDiameter NomDiameter,
-                  ref Editor ed)
+        public static bool firstrun = true;
+
+
+        public static int getOFinfo(String partParams, bool trueIsIndexFalseIsValue)
         {
-            var specMgr = SpecManager.GetSpecManager();
 
-            SpecPart specPart = null;
-            if (specMgr.HasType(SpecName, PartName))
+            int idx = -1;
+            IDictionary<string, double> partParamsDict = Helper.ReadInDict(partParams, true);
+
+
+            foreach (var item in partParamsDict)
             {
-                SpecPartReader specPartReader = specMgr.SelectParts(SpecName, PartName);
-
-                while (specPartReader.Next())
+                ++idx;
+                if (item.Key.Equals("OF"))
                 {
-                    specPart = specPartReader.Current;
-
-                    if (specPart.Type.Equals(PartName) &&
-                        shortdesc.Equals(specPart.PropValue("ShortDescription").ToString()) &&
-                        NomDiameter.Value.ToString().Equals(specPart.PropValue("Size").ToString().Replace("\"", "")))
-                    {
-                        break;
-                    }
+                    if (trueIsIndexFalseIsValue)
+                        return idx;
+                    else
+                        return Convert.ToInt32(item.Value);
                 }
 
             }
 
-            return specPart;
+            return idx;
         }
 
-        public static PipeInlineAsset CreateInlineAsset()
+        public static void setOF(ObjectId id, double length)
         {
-            PipeInlineAsset pipeInlineAssetPart = new PipeInlineAsset();
-            return pipeInlineAssetPart;
-        }
+            Autodesk.ProcessPower.ACPUtils.ParameterList plist = Autodesk.ProcessPower.PnP3dPipeSupport.SupportHelper.GetSupportParameters(id);
+            String partParams = plist.ToString();
+            int ofidx = getOFinfo(partParams, true);
 
 
-        public static ObjectId AddObjectToDatabase(
-            SpecPart specPart,
-            Autodesk.ProcessPower.PnP3dObjects.Part part,
-            String connectionName,
-            PartSizePropertiesCollection connectionPropColl,
-            ref Database db,
-            ref Editor ed,
-            ref Project currentProject,
-            ref DataLinksManager dlm,
-            ref DataLinksManager3d dlm3d,
-            ref PipingObjectAdder pipeObjAdder)
-        {
-            ObjectId partObjectId = ObjectId.Null;
-            if (pipeObjAdder == null)
+            if (ofidx != -1)
             {
-                ed.WriteMessage("Error: Cannot create PipingObjectAdder");
-                return partObjectId;
+                Autodesk.ProcessPower.ACPUtils.ParameterInfo pinfo = new Autodesk.ProcessPower.ACPUtils.ParameterInfo();
+                pinfo.Name = "L1";
+                pinfo.Value = length.ToString();
+                plist[ofidx] = pinfo;
+                Autodesk.ProcessPower.PnP3dPipeSupport.SupportHelper.UpdateSupportEntity(id, plist);
             }
+        }
 
+
+        [CommandMethod("traysetlength", CommandFlags.UsePickSet)]
+        public static void obsOn()
+        {
+
+            Helper.Initialize();
 
             try
             {
-                using (Transaction trans = db.TransactionManager.StartTransaction())
+                if (!PnPProjectUtils.GetActiveDocumentType().Equals("Piping"))
                 {
-
-                    PipeInlineAsset pipeInlineAsset = part as PipeInlineAsset;
-
-                    pipeObjAdder.Add(specPart, pipeInlineAsset);
-
-
-                    partObjectId = part.ObjectId;
-                    trans.AddNewlyCreatedDBObject(part, true);
-                    trans.Commit();
-                }
-            }
-            catch (SystemException ex)
-            {
-                ed.WriteMessage("Error: Exception while appending objects.\n");
-                System.Diagnostics.StackTrace trace = new System.Diagnostics.StackTrace(ex, true);
-                ed.WriteMessage(trace.ToString());
-                ed.WriteMessage("Line: " + trace.GetFrame(0).GetFileLineNumber());
-                ed.WriteMessage("message: " + ex.Message);
-            }
-            return partObjectId;
-        }
-
-        [CommandMethod("execTrayCommand", CommandFlags.UsePickSet)]
-        public static void execTrayCommand()
-        {
-            Editor ed = AcadApp.DocumentManager.MdiActiveDocument.Editor;
-            try
-            {
-                Database db = AcadApp.DocumentManager.MdiActiveDocument.Database;
-                Project currentProject = PlantApp.CurrentProject.ProjectParts["Piping"];
-                DataLinksManager dlm = currentProject.DataLinksManager;
-                string configstr = "";
-                string tcom = "";
-                string cspec = "";
-                string cspecpath = "";
-                string shortdesc = "";
-                string W = "";
-                string H = "";
-                NominalDiameter nd = new NominalDiameter();
-                UISettings sett = new UISettings();
-                nd = NominalDiameter.FromDisplayString(null, sett.CurrentSize);
-                //
-
-                PromptResult pr = ed.GetString("\nconfiguration string: ");
-                if (pr.Status != PromptStatus.OK)
-                {
-                }
-                else
-                    configstr = pr.StringResult;
-
-                if (!configstr.Equals(""))
-                {
-                    string[] configArr = configstr.Split(new char[] { ',' });
-
-                    foreach (string cstr in configArr)
-                    {
-                        string cstrkey = cstr.Split(new char[] { '=' })[0].Trim();
-                        string cstrval = cstr.Split(new char[] { '=' })[1].Trim();
-
-                        switch (cstrkey)
-                        {
-                            case "tcom":
-                                tcom = cstrval;
-                                if (tcom.Equals("")) goto default;
-                                break;
-                            case "cspec":
-                                if (cstrval.Equals(""))
-                                {
-                                    goto default;
-                                }
-                                else if (cstrval.IndexOf("/") == -1)
-                                {
-                                    cspec = cstrval;
-                                    PlantProject currentProj = PlantApplication.CurrentProject;
-                                    cspecpath = currentProj.ProjectFolderPath + "\\Spec Sheets\\" + cstrval + ".pspx";
-                                }
-                                else
-                                {
-                                    cspecpath = cstrval;
-                                    cspec = cstrval.Substring(cstrval.LastIndexOf("/") + 1);
-                                    cspec = cspec.Substring(0, cspec.Length - 5);
-                                }
-                                break;
-                            case "shortdesc":
-                                shortdesc = cstrval;
-                                if (shortdesc.Equals("")) goto default;
-                                break;
-                            default:
-                                ed.WriteMessage("\nconfiguration string is not according to the rules!");
-                                return;
-                                break;
-                        }
-                    }
-
-
-                }
-                else
-                {
-                    ed.WriteMessage("No configuration string was provided\n");
+                    Helper.ed.WriteMessage("\n This tool works only on Piping drawings!");
                     return;
                 }
 
+                ObjectId objId = new ObjectId();
 
-                if (tcom.Equals("setSpecForOneTray"))
+                PromptSelectionResult selectionRes = Helper.ed.SelectImplied();
+                Point3d pickpoint = new Point3d();
+
+                if (selectionRes.Status == PromptStatus.Error)
+
                 {
-                    /*PromptPointResult SelectedPoint = ed.GetPoint("\nPunkt1: ");
-                    Point3d startLoc = SelectedPoint.Value;
-
-                    SelectedPoint = ed.GetPoint("\nPunkt2: ");
-                    Point3d endLoc = SelectedPoint.Value;
-
-                    setSpecData(ref ed, startLoc, endLoc, shortdesc, nd, H, cspecpath, ref db);*/
+                    PromptEntityResult selResult = Helper.ed.GetEntity("Select tray, pick it close to the end where the modification is needed");
+                    if (selResult.Status == PromptStatus.OK)
+                    {
+                        objId = selResult.ObjectId;
+                        pickpoint = selResult.PickedPoint;
+                    }
                 }
                 else
                 {
-                    TypedValue[] filterlist = new TypedValue[1];
-                    filterlist[0] = new TypedValue(0, "ACPPPIPE,ACPPPIPEINLINEASSET");//
-                    SelectionFilter filter = new SelectionFilter(filterlist);
-
-                    PromptSelectionResult selRes = ed.GetSelection(filter);
-                    if (selRes.Status != PromptStatus.OK)
-                    { return; }
-
-                    //prompt for zdir
-                    PromptKeywordOptions pKeyOpts = new PromptKeywordOptions("");
-                    pKeyOpts.Message = "\nEnter the up direction ";
-                    pKeyOpts.Keywords.Add("Up");
-                    pKeyOpts.Keywords.Add("Down");
-                    pKeyOpts.Keywords.Add("North");
-                    pKeyOpts.Keywords.Add("South");
-                    pKeyOpts.Keywords.Add("West");
-                    pKeyOpts.Keywords.Add("East");
-                    pKeyOpts.Keywords.Add("2pick");
-                    pKeyOpts.AllowNone = false;
-
-                    string zdirSel = ed.GetKeywords(pKeyOpts).StringResult;
-
-                    Vector3d zVector = new Vector3d();
-                    bool pick2 = false; 
-
-                    switch (zdirSel)
-                    {
-                        case "Up":
-                            zVector = new Vector3d(0, 0, 1);
-                            break;
-                        case "Down":
-                            zVector = new Vector3d(0, 0, -1);
-                            break;
-                        case "North":
-                            zVector = new Vector3d(0, 1, 0);
-                            break;
-                        case "South":
-                            zVector = new Vector3d(0, -1, 0);
-                            break;
-                        case "West":
-                            zVector = new Vector3d(-1, 0, 0);
-                            break;
-                        case "East":
-                            zVector = new Vector3d(1, 0, 0);
-                            break;
-                        case "2pick":
-                            pick2 = true;
-                            break;
-                    }
-
-                    if (pick2)
-                    {
-                        PromptPointResult SelPoint = ed.GetPoint("\nPunkt1: ");
-                        Point3d sLoc = SelPoint.Value;
-                        SelPoint = ed.GetPoint("\nPunkt2: ");
-                        Point3d eLoc = SelPoint.Value;
-                        zVector = sLoc.GetVectorTo(eLoc);
-                    }
-
-                    zVector = zVector.TransformBy(ed.CurrentUserCoordinateSystem);
-
-                    ObjectIdCollection objIds = new ObjectIdCollection();
-                    ObjectId[] objIdArray = selRes.Value.GetObjectIds();
-
-
-                    foreach (ObjectId id in objIdArray)
-                    {
-                        Point3d startLoc = new Point3d();
-                        Point3d endLoc = new Point3d();
-
-                        int rowId = dlm.FindAcPpRowId(id);
-
-                        StringCollection pnames = new StringCollection();
-                        pnames.Add("PnPClassName");
-                        pnames.Add("Spec");
-                        pnames.Add("Size");
-                        pnames.Add("COG Z"); 
-                        //pnames.Add("LineNumberTag");
-                        //todo add spec size
-
-                        StringCollection theprops = dlm.GetProperties(rowId, pnames, true);
-                        if (!theprops[1].Equals(cspec))
-                            continue;
-
-                        if (theprops[0].Equals("Pipe"))
-                        {
-                            int lgrowId = 0;
-                            Pipe entpipe = new Pipe();
-                            nd = new NominalDiameter(Convert.ToDouble(theprops[2].Replace("\"", "")));
-                            using (Transaction tr = db.TransactionManager.StartTransaction())
-                            {
-                                entpipe = tr.GetObject(id, OpenMode.ForWrite) as Pipe;
-                                startLoc = entpipe.StartPoint;
-                                endLoc = entpipe.EndPoint;
-                                int prowId = dlm.FindAcPpRowId(id);
-                                PnPRowIdArray prow = dlm.GetRelatedRowIds("P3dLineGroupPartRelationship", "Part", prowId, "LineGroup");
-                                lgrowId = prow.First.Value;
-                                entpipe.Erase();
-                                tr.Commit();
-                            }
-
-                            H = setSpecData(ref ed, startLoc, endLoc, shortdesc, nd, H, cspecpath, ref db);
-                            ed.WriteMessage("in " + nd.Value.ToString() + " and " + cspec);
-                            ObjectId coupId = insertSpecPartTo3d(startLoc, endLoc, zVector, ref ed, nd, shortdesc, cspec, ref db, ref currentProject, ref dlm);
-
-                            //string newBoP = (Convert.ToDouble(theprops[3]) - (Convert.ToDouble(H) / 2)).ToString();
-
-                            int crowId = dlm.FindAcPpRowId(coupId);
-
-                            StringCollection cnames = new StringCollection();
-                            cnames.Add("Spec");
-                            //cnames.Add("LineNumberTag");
-                            cnames.Add("Length");
-                            StringCollection cvals = new StringCollection();
-                            cvals.Add("");
-                            //cvals.Add(theprops[4]);
-                            cvals.Add(startLoc.DistanceTo(endLoc).ToString());
-
-                            dlm.Relate("P3dLineGroupPartRelationship", "LineGroup", lgrowId, "Part", crowId);
-                            dlm.SetProperties(crowId, cnames, cvals);
-
-
-                        }
-                        else if (theprops[0].Equals("Elbow"))
-                        {
-
-                            InlineAsset entelbow = null;
-
-                            using (Transaction tr = db.TransactionManager.StartTransaction())
-                            {
-                                entelbow = tr.GetObject(id, OpenMode.ForWrite) as InlineAsset;
-
-                                if (!entelbow.ZAxis.Equals(zVector))
-                                {
-                                    Autodesk.ProcessPower.PnP3dObjects.PortCollection theports = entelbow.GetPorts(PortType.Both);
-                                    Vector3d port1 = theports[0].Direction;
-                                    Vector3d port2 = theports[1].Direction;
-                                    Point3d cog_old = entelbow.CenterOfGravity;
-                                    Vector3d theXaxis = port1;
-                                    Vector3d theXaxis_alternative = port2;
-                                    entelbow.SetOrientation(theXaxis, zVector);
-                                    if (!entelbow.CenterOfGravity.Equals(cog_old))
-                                        entelbow.SetOrientation(theXaxis_alternative, zVector);
-                                }
-
-                                tr.Commit();
-                            }
-
-                        }
-
-                    }
-
+                    objId = selectionRes.Value.GetObjectIds()[0];
                 }
 
+                PromptPointOptions opt = new PromptPointOptions("Select end point or other limit");
+                PromptPointResult res;
+                do
+                {
+                    res = Helper.ed.GetPoint(opt);
+                }
+                while (res.Status == PromptStatus.Error);
+
+                Point3d point1 = res.Value;
+
+                if (point1.Equals(new Point3d())) return;
+
+                /* V0,use two pickpoints:
+                 * opt = new PromptPointOptions("Select second point");
+                 do
+                 {
+                     res = Helper.ed.GetPoint(opt);
+                 }
+                 while (res.Status == PromptStatus.Error);
+
+                 Point3d point2 = res.Value;*/
+
+
+                if (firstrun)
+                {
+                    Helper.ed.WriteMessage("\n AUTODESK PROVIDES THIS PROGRAM \"AS IS\" AND WITH ALL FAULTS.");
+                    Helper.ed.WriteMessage("\n AUTODESK SPECIFICALLY DISCLAIMS ANY IMPLIED WARRANTY OF");
+                    Helper.ed.WriteMessage("\n MERCHANTABILITY OR FITNESS FOR A PARTICULAR USE.  AUTODESK, INC.");
+                    Helper.ed.WriteMessage("\n DOES NOT WARRANT THAT THE OPERATION OF THE PROGRAM WILL BE");
+                    Helper.ed.WriteMessage("\n UNINTERRUPTED OR ERROR FREE.");
+                    firstrun = false;
+                }
+
+                using (Transaction tr = Helper.db.TransactionManager.StartTransaction())
+                {
+
+                    try
+                    {
+                        InlineAsset tray = tr.GetObject(objId, OpenMode.ForWrite) as InlineAsset;
+                        Part asset = tr.GetObject(objId, OpenMode.ForRead) as Part;
+                        PortCollection portCol = asset.GetPorts(PortType.All);
+                        double length = 0.0;
+
+
+
+
+
+                        Vector3d S1toEndpoint = tray.Position.GetVectorTo(point1);
+                        Vector3d S1toS2 = tray.Position.GetVectorTo(portCol[1].Position);
+
+                        //V2,legacy: if direction of vector s1,endpoint not equals direction s1,s2 (dotproduct < 0) then set tray position to endpoint 
+                        //double dotprod = S1toEndpoint.DotProduct(S1toS2);
+
+
+                        if (pickpoint.DistanceTo(portCol[1].Position) > pickpoint.DistanceTo(tray.Position))
+                        {
+                            double oldlength = portCol[1].Position.DistanceTo(tray.Position);
+                            //V2:without snapping use pickpoint: length = portCol[1].Position.DistanceTo(point1);
+                            //use snaps outside of tray axis: length = dotproduct of (vector of the cable tray p1 -> p2) and (vector basepoint of tray to pickpoint)
+                            length = portCol[1].Position.GetVectorTo(tray.Position).GetNormal().DotProduct(portCol[1].Position.GetVectorTo(point1));
+                            if (length <= 0)
+                            {
+                                Helper.ed.WriteMessage("\nerror: length cannot be zero or negative");
+                                return;
+                            }
+                            //normalized vector p2p1 * lengthdiff
+                            Vector3d moveVector = portCol[1].Position.GetVectorTo(tray.Position).GetNormal().MultiplyBy(length - oldlength);
+                            tray.Position = tray.Position.TransformBy(Matrix3d.Displacement(moveVector));
+                        }
+                        else
+                        {
+                            //V2:without snapping use pickpoint: length = tray.Position.DistanceTo(point1);
+                            length = tray.Position.GetVectorTo(portCol[1].Position).GetNormal().DotProduct(tray.Position.GetVectorTo(point1));
+                            if (length <= 0)
+                            {
+                                Helper.ed.WriteMessage("\nerror: length cannot be zero or negative");
+                                return;
+                            }
+                        }
+                        setOF(objId, length);
+
+                    }
+                    catch (System.Exception e)
+                    {
+                        System.Diagnostics.StackTrace trace = new System.Diagnostics.StackTrace(e, true);
+                        Helper.ed.WriteMessage(trace.ToString());
+                        Helper.ed.WriteMessage("\nLine: " + trace.GetFrame(0).GetFileLineNumber());
+                        Helper.ed.WriteMessage("\nitem error: " + e.Message);
+                    }
+
+
+                    tr.Commit();
+
+
+                    Helper.ed.WriteMessage("\nScript finished");
+                }
             }
-            catch (System.Exception ex)
+            catch (System.Exception e)
             {
-
-                System.Diagnostics.StackTrace trace = new System.Diagnostics.StackTrace(ex, true);
-                ed.WriteMessage(trace.ToString());
-                ed.WriteMessage("Line: " + trace.GetFrame(0).GetFileLineNumber());
-                ed.WriteMessage("message: " + ex.Message);
-
+                System.Diagnostics.StackTrace trace = new System.Diagnostics.StackTrace(e, true);
+                Helper.ed.WriteMessage(trace.ToString());
+                Helper.ed.WriteMessage("\nLine: " + trace.GetFrame(0).GetFileLineNumber());
+                Helper.ed.WriteMessage("\nscript error: " + e.Message);
             }
             finally
             {
-
+                Helper.Terminate();
             }
         }
 
-
-        public static string setSpecData(ref Editor ed, Point3d startLoc, Point3d endLoc, string shortdesc, NominalDiameter nd, string H, string pathSpec, ref Database db)
-        {
-
-
-            double dist = startLoc.DistanceTo(endLoc);
-
-
-
-            PnPRow specrow = null;
-
-            Autodesk.ProcessPower.PartsRepository.Specification.PipePartSpecification pps = Autodesk.ProcessPower.PartsRepository.Specification.PipePartSpecification.OpenSpecification(pathSpec);
-
-            PnPTable table = pps.Database.Tables["EngineeringItems"];
-
-            if (table != null)
-            {
-                String query = "\"NominalDiameter\"=" + nd.Value;
-
-                query += " and \"ShortDescription\"='" + shortdesc + "'";
-
-                PnPRow[] r = table.Select(query);
-
-                if (r.Length > 0)
-                {
-                    specrow = r[0];
-                }
-
-                string currentgeometry = specrow["ContentGeometryParamDefinition"].ToString();
-                string[] cgeoArr = currentgeometry.Split(new char[] { ',' });
-                string newgeometry = "";
-
-                foreach (string cgeo in cgeoArr)
-                {
-                    if (!newgeometry.Equals(""))
-                        newgeometry += ",";
-                    if (cgeo.IndexOf("L=") != -1)
-                        newgeometry += "L=" + dist;
-                    else
-                        newgeometry += cgeo;
-                    if (cgeo.IndexOf("H=") != -1)
-                        H = cgeo.Split(new char[] { '=' })[1].Trim();
-                }
-
-                specrow.BeginEdit();
-                specrow.SetPropertyValue("ContentGeometryParamDefinition", newgeometry);
-                specrow.EndEdit();
-                table.RefreshCachedRows();
-                pps.AcceptChanges();
-                pps.Close();
-
-            }
-            return H;
-        }
-
-        public static ObjectId insertSpecPartTo3d(Point3d startLoc, Point3d endLoc, Vector3d zVector, ref Editor ed, NominalDiameter nd, string shortdesc, string cspec, ref Database db, ref Project currentProject, ref DataLinksManager dlm)
-        {
-            ContentManager cm = ContentManager.GetContentManager();
-            DataLinksManager3d dlm3d = DataLinksManager3d.Get3dManager(dlm);
-            PipingObjectAdder pipeObjAdder = new PipingObjectAdder(dlm3d, db);
-
-            SpecPart specpart_Flange1 = FetchSpecPart("Coupling", shortdesc, cspec, nd, ref ed);
-            //SpecPart specpart_Flange1 = FetchSpecPart("Sleeve", shortdesc, cspec, nd, ref ed);
-
-            ObjectId symboloid_Flange1 = ContentManager.GetContentManager().GetSymbol(specpart_Flange1, db);
-
-
-            // Create the FLANGE 1 part
-            //
-            PipeInlineAsset pipeInlineAsset_Flange1 = CreateInlineAsset();
-
-            // Set  the FLANGE 1 part's orientation
-            //
-            pipeInlineAsset_Flange1.Position = startLoc;
-            pipeInlineAsset_Flange1.SetOrientation(startLoc.GetVectorTo(endLoc), zVector);
-            //pipeInlineAsset_Flange1.SetOrientation(startLoc.GetVectorTo(endLoc), startLoc.GetVectorTo(endLoc).GetPerpendicularVector());
-
-            pipeInlineAsset_Flange1.SymbolId = symboloid_Flange1;
-
-            // Add the FLANGE 1 to the database
-            //
-
-            ObjectId oid_Flange1 = AddObjectToDatabase(specpart_Flange1, pipeInlineAsset_Flange1, String.Empty, null, ref db, ref ed, ref currentProject, ref dlm, ref dlm3d, ref pipeObjAdder);
-
-            return oid_Flange1;
-        }
 
     }
+
+
+
+
 }
+
