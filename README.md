@@ -9,10 +9,11 @@ Make sure that your straight cable tray has the "Component Designation" paramete
 else you risk your cable trays going back to default length if somebody updates them with the specupdate.
 
 If the dll doesn't load or giving errors, add the following line (in Red) to acad.exe.config (AutoCAD installation folder):
-   <runtime>        
+ <pre>
+ <runtime>        
                <generatePublisherEvidence enabled="false"/>   
                <loadFromRemoteSources enabled="true"/> 
    </runtime>
-
+</pre>
 See this article about how do create the dll and how to install it: http://autode.sk/2jYKHJy 
 </pre>
