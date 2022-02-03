@@ -62,7 +62,7 @@ namespace pssCommands
             if (ofidx != -1)
             {
                 Autodesk.ProcessPower.ACPUtils.ParameterInfo pinfo = new Autodesk.ProcessPower.ACPUtils.ParameterInfo();
-                pinfo.Name = "L1";
+                pinfo.Name = "L";
                 pinfo.Value = length.ToString();
                 plist[ofidx] = pinfo;
                 Autodesk.ProcessPower.PnP3dPipeSupport.SupportHelper.UpdateSupportEntity(id, plist);
@@ -104,7 +104,7 @@ namespace pssCommands
                     objId = selectionRes.Value.GetObjectIds()[0];
                 }
 
-                PromptPointOptions opt = new PromptPointOptions("Select end point or other limit");
+                PromptPointOptions opt = new PromptPointOptions("\n\nSelect end point or other limit");
                 PromptPointResult res;
                 do
                 {
