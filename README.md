@@ -1,34 +1,18 @@
-# Plant-3D-cable-tray-tool
-<pre>
-Problem to fix:
+# Plant-3D-cable-tray-tool (proof-of-concept, sample code, use at own risk)
+1. type "netload" in Plant 3D to load the dll
+2. execute the command typing "traysetlength", then follow the commandline input
 
-Cable tray concept with python based couplings as trays. Length is fixed. Only way to adjust length is by setting properties parameter (with spec part designation is “Custom”) which is not user friendly.
+Note this just works on straight cable trays (recommendation: use type coupling) and it just works when the length parameter is called "L".
+For any other length parameter names like e.g. "L1" this script would need to get modified.
 
-“autotray” subcommand converts all selected pipes into couplings with the needed sizes, and rotates the selected elbows which are headfirst.
+Make sure that your straight cable tray has the "Component Designation" parameter set to "Parametric", 
+else you risk your cable trays going back to default length if somebody updates them with the specupdate.
 
- 
-
-command
-
-execTrayCommand "tcom=autotray,cspec=CableTraySpec,shortdesc=_cabletraycoup"
-
-action
-
-converts all selected pipes into couplings with the needed sizes, and rotates the selected elbows which are headfirst. The selected parts have to be in the same plain (e.g. horizontal), if there are others (e.g. vertical) they have to be processed separately. In the command sequence you will be asked for the alignment. The spec text is deleted from the properties to avoid length changes from spec update
-
-comment
-
-Doesn’t work if spec is opened by spec editor (readonly error). Use top view for the autotray command, it will connect (general: view from the "up direction" that you will choose, then it will connect)! Can do imperial with imperial spec and metric with metric spec. Width of the tray must be set up in the spec as nominal diameter (size). The outer diameter can be set to the tray height, this will lead to correct "top of pipe" and "bottom of pipe" values in the ortho.
-
-parameters
-
-Same as above, but the nominal diameter will be taken from the pipes
-
- 
-
- 
-
- 
+If the dll doesn't load or giving errors, add the following line (in Red) to acad.exe.config (AutoCAD installation folder):
+   <runtime>        
+               <generatePublisherEvidence enabled="false"/>   
+               <loadFromRemoteSources enabled="true"/> 
+   </runtime>
 
 See this article about how do create the dll and how to install it: http://autode.sk/2jYKHJy 
 </pre>
