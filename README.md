@@ -10,3 +10,5 @@ else you risk your cable trays going back to default length if somebody updates 
 
 Of course you can put your command into the CUI, e.g.: CUI -> Shortcut Menus -> Edit Menu, so it will available by right clicking after selecting the tray.
 This command can be created as custom command in the CUI ("create a new command") with the "Macro" entry: ^C^Ctraysetlength
+
+See demo of the code here: https://youtu.be/_au4D_soGBc
