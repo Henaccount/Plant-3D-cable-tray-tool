@@ -1,6 +1,6 @@
 # Plant-3D-cable-tray-tool (proof-of-concept, sample code, use at own risk)
 1. type "netload" in Plant 3D to load the dll
-2. execute the command typing "traysetlength", then follow the commandline input, working in defined view (perpendicular to the tray), e.g. top view is recommended
+2. execute the command typing "traysetlength", then follow the commandline input
 
 Note this just works on straight cable trays (recommendation: use type coupling) and it just works when the length parameter is called "L".
 For any other length parameter names like e.g. "L1" this script would need to get modified.
