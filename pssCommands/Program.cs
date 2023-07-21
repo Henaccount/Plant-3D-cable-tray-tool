@@ -92,19 +92,29 @@ namespace pssCommands
                 if (selectionRes.Status == PromptStatus.Error)
 
                 {
-                    PromptEntityResult selResult = Helper.ed.GetEntity("Select tray, pick it close to the end where the modification is needed");
+                    //v6: the pickpoint from the GetEntity prompt was only working in perpendicular views, so instead now working with preselected tray and picking a point
+                    /*PromptEntityResult selResult = Helper.ed.GetEntity("Select tray, pick it close to the end where the modification is needed");
                     if (selResult.Status == PromptStatus.OK)
                     {
                         objId = selResult.ObjectId;
                         pickpoint = selResult.PickedPoint;
-                    }
+                        Helper.ed.WriteMessage("\npickpoint: " + pickpoint.ToString());
+                    }*/
+                    return;
                 }
                 else
                 {
                     objId = selectionRes.Value.GetObjectIds()[0];
+                    PromptPointResult selResult = Helper.ed.GetPoint("snap on the side of the tray where you want to expand or shorten..");
+                    if (selResult.Status == PromptStatus.OK)
+                    {
+                        pickpoint = selResult.Value;
+                        //Helper.ed.WriteMessage("\npickpoint: " + pickpoint.ToString());
+                    }
                 }
 
-                PromptPointOptions opt = new PromptPointOptions("\n\nSelect end point or other limit");
+
+                PromptPointOptions opt = new PromptPointOptions("\n\nSelect new tray end point or surrounding coordination item..");
                 PromptPointResult res;
                 do
                 {
@@ -156,7 +166,7 @@ namespace pssCommands
 
                         //V2,legacy: if direction of vector s1,endpoint not equals direction s1,s2 (dotproduct < 0) then set tray position to endpoint 
                         //double dotprod = S1toEndpoint.DotProduct(S1toS2);
-
+                        
 
                         if (pickpoint.DistanceTo(portCol[1].Position) > pickpoint.DistanceTo(tray.Position))
                         {
@@ -164,11 +174,7 @@ namespace pssCommands
                             //V2:without snapping use pickpoint: length = portCol[1].Position.DistanceTo(point1);
                             //use snaps outside of tray axis: length = dotproduct of (vector of the cable tray p1 -> p2) and (vector basepoint of tray to pickpoint)
                             length = portCol[1].Position.GetVectorTo(tray.Position).GetNormal().DotProduct(portCol[1].Position.GetVectorTo(point1));
-                            if (length <= 0)
-                            {
-                                Helper.ed.WriteMessage("\nerror: length cannot be zero or negative");
-                                return;
-                            }
+
                             //normalized vector p2p1 * lengthdiff
                             Vector3d moveVector = portCol[1].Position.GetVectorTo(tray.Position).GetNormal().MultiplyBy(length - oldlength);
                             tray.Position = tray.Position.TransformBy(Matrix3d.Displacement(moveVector));
@@ -177,12 +183,16 @@ namespace pssCommands
                         {
                             //V2:without snapping use pickpoint: length = tray.Position.DistanceTo(point1);
                             length = tray.Position.GetVectorTo(portCol[1].Position).GetNormal().DotProduct(tray.Position.GetVectorTo(point1));
-                            if (length <= 0)
-                            {
-                                Helper.ed.WriteMessage("\nerror: length cannot be zero or negative");
-                                return;
-                            }
+
                         }
+
+                        if (length <= 0)
+                        {
+                            Helper.ed.WriteMessage("\nerror: length cannot be zero or negative");
+                            return;
+                        }
+                        //else if (length < 0) length = -length;
+
                         setOF(objId, length);
 
                     }
