@@ -38,5 +38,6 @@ using System.Runtime.InteropServices;
 //V3: can also use snappoints outside of the tray axis
 //V4: change L to L1 as length
 //V5: change L1 to L as length
-[assembly: AssemblyVersion("0.0.0.5")]
-[assembly: AssemblyFileVersion("0.0.0.5")]
+//V6: the pickpoint from the GetEntity prompt was only working in perpendicular views, so instead now working with preselected tray and picking a point
+[assembly: AssemblyVersion("24.24.0.6")]
+[assembly: AssemblyFileVersion("24.24.0.6")]
