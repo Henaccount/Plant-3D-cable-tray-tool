@@ -12,3 +12,4 @@ Of course you can put your command into the CUI, e.g.: CUI -> Shortcut Menus -> 
 This command can be created as custom command in the CUI ("create a new command") with the "Macro" entry: ^C^Ctraysetlength
 
 See demo of the code here: https://youtu.be/_au4D_soGBc
+(NOTE: the Visual Studio part requires to install <a href="https://www.autodesk.com/developer-network/platform-technologies/autocad/objectarx">ObjectARX</a> and <a href="https://aps.autodesk.com/developer/overview/autocad-plant-3d-and-pid">Plant 3D SDK</a> respectivly)
